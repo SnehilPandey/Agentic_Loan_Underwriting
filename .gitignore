@@ -1,0 +1,109 @@
+# Python source distribution files (excluding from loan underwriting project)
+Doc/
+Grammar/
+Include/
+Lib/
+Mac/
+Misc/
+Modules/
+Objects/
+PC/
+PCbuild/
+Parser/
+Programs/
+Python/
+Tools/
+aclocal.m4
+config.guess
+config.sub
+configure
+configure.ac
+install-sh
+pyconfig.h.in
+setup.py
+.editorconfig
+.mailmap
+.pre-commit-config.yaml
+.readthedocs.yml
+README.rst
+LICENSE
+
+# Python cache and compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+myenv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Environment variables and secrets
+.env
+.env.local
+.env.production
+.env.staging
+databricks_env.sh
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Testing
+.coverage
+.pytest_cache/
+.tox/
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# Streamlit
+.streamlit/secrets.toml
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db

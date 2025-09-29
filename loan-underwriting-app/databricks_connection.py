@@ -1,0 +1,346 @@
+"""
+Databricks Connection and Data Processing Module
+"""
+
+import os
+import pandas as pd
+from databricks import sql
+from databricks.sdk import WorkspaceClient
+from databricks.sdk.core import Config
+import logging
+from datetime import datetime, timezone
+from typing import Dict, List, Optional, Tuple
+import uuid
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+class DatabricksManager:
+    """Manages Databricks connections and data operations for the loan underwriting system"""
+    
+    def __init__(self):
+        """Initialize Databricks connection configuration"""
+        self.config = None
+        self.workspace_client = None
+        self.sql_connection = None
+        
+        # Configuration from environment variables
+        self.server_hostname = os.getenv("DATABRICKS_SERVER_HOSTNAME")
+        self.http_path = os.getenv("DATABRICKS_HTTP_PATH") 
+        self.token = os.getenv("DATABRICKS_TOKEN")
+        self.catalog = os.getenv("DATABRICKS_CATALOG", "main")
+        self.schema = os.getenv("DATABRICKS_SCHEMA", "loan_underwriting")
+        
+        # Validate required configuration
+        if not all([self.server_hostname, self.http_path, self.token]):
+            logger.warning("Missing Databricks configuration. App will run in demo mode.")
+            self.credentials_available = False
+        else:
+            self.credentials_available = True
+            try:
+                # Only initialize Config if credentials are available
+                self.config = Config(
+                    host=self.server_hostname,
+                    token=self.token
+                )
+                logger.info("Databricks configuration initialized successfully")
+            except Exception as e:
+                logger.warning(f"Databricks config initialization failed: {e}. Running in demo mode.")
+                self.credentials_available = False
+    
+    def get_workspace_client(self) -> WorkspaceClient:
+        """Get authenticated Databricks workspace client"""
+        if not self.credentials_available:
+            raise ValueError("Databricks credentials not configured")
+            
+        if not self.workspace_client:
+            try:
+                self.workspace_client = WorkspaceClient(
+                    host=self.server_hostname,
+                    token=self.token
+                )
+                logger.info("Databricks workspace client initialized successfully")
+            except Exception as e:
+                logger.error(f"Failed to initialize workspace client: {e}")
+                raise
+        return self.workspace_client
+    
+    def get_sql_connection(self):
+        """Get SQL connection for data operations"""
+        if not self.credentials_available:
+            raise ValueError("Databricks credentials not configured")
+            
+        if not self.sql_connection:
+            try:
+                self.sql_connection = sql.connect(
+                    server_hostname=self.server_hostname,
+                    http_path=self.http_path,
+                    access_token=self.token
+                )
+                logger.info("Databricks SQL connection established successfully")
+            except Exception as e:
+                logger.error(f"Failed to establish SQL connection: {e}")
+                raise
+        return self.sql_connection
+    
+    def execute_query(self, query: str, params: Optional[Dict] = None) -> pd.DataFrame:
+        """Execute SQL query and return results as DataFrame"""
+        if not self.credentials_available:
+            raise ValueError("Databricks credentials not configured")
+            
+        try:
+            connection = self.get_sql_connection()
+            with connection.cursor() as cursor:
+                cursor.execute(query, params or {})
+                
+                # Fetch column names
+                columns = [desc[0] for desc in cursor.description] if cursor.description else []
+                
+                # Fetch all results
+                results = cursor.fetchall()
+                
+                # Convert to DataFrame
+                if results and columns:
+                    return pd.DataFrame(results, columns=columns)
+                else:
+                    return pd.DataFrame()
+                    
+        except Exception as e:
+            logger.error(f"Query execution failed: {e}")
+            raise
+    
+    def create_schema_if_not_exists(self):
+        """Create the loan underwriting schema and tables if they don't exist"""
+        try:
+            # Create catalog and schema
+            create_catalog_query = f"CREATE CATALOG IF NOT EXISTS {self.catalog}"
+            create_schema_query = f"CREATE SCHEMA IF NOT EXISTS {self.catalog}.{self.schema}"
+            
+            self.execute_query(create_catalog_query)
+            self.execute_query(create_schema_query)
+            
+            # Create loan applications table
+            create_applications_table = f"""
+            CREATE TABLE IF NOT EXISTS {self.catalog}.{self.schema}.loan_applications (
+                application_id STRING,
+                applicant_name STRING,
+                age INT,
+                annual_income DECIMAL(12,2),
+                employment_type STRING,
+                credit_score INT,
+                loan_amount DECIMAL(12,2),
+                loan_purpose STRING,
+                loan_term INT,
+                down_payment DECIMAL(12,2),
+                debt_to_income_ratio DECIMAL(5,2),
+                decision STRING,
+                decision_reason STRING,
+                approved_amount DECIMAL(12,2),
+                interest_rate DECIMAL(5,2),
+                risk_score DECIMAL(5,2),
+                application_timestamp TIMESTAMP,
+                processing_time_seconds DECIMAL(8,2)
+            ) USING DELTA
+            """
+            
+            # Create loan analytics table
+            create_analytics_table = f"""
+            CREATE TABLE IF NOT EXISTS {self.catalog}.{self.schema}.loan_analytics (
+                date DATE,
+                total_applications INT,
+                approved_applications INT,
+                rejected_applications INT,
+                approval_rate DECIMAL(5,2),
+                avg_loan_amount DECIMAL(12,2),
+                avg_credit_score DECIMAL(5,1),
+                avg_processing_time DECIMAL(8,2),
+                created_timestamp TIMESTAMP
+            ) USING DELTA
+            """
+            
+            self.execute_query(create_applications_table)
+            self.execute_query(create_analytics_table)
+            
+            logger.info("Database schema and tables created successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to create schema: {e}")
+            raise
+    
+    def save_loan_application(self, application_data: Dict, decision_result: Dict) -> str:
+        """Save loan application and decision to Delta table"""
+        try:
+            # Generate unique application ID
+            application_id = str(uuid.uuid4())
+            
+            # Prepare data for insertion
+            insert_query = f"""
+            INSERT INTO {self.catalog}.{self.schema}.loan_applications VALUES (
+                %(application_id)s,
+                %(applicant_name)s,
+                %(age)s,
+                %(annual_income)s,
+                %(employment_type)s,
+                %(credit_score)s,
+                %(loan_amount)s,
+                %(loan_purpose)s,
+                %(loan_term)s,
+                %(down_payment)s,
+                %(debt_to_income_ratio)s,
+                %(decision)s,
+                %(decision_reason)s,
+                %(approved_amount)s,
+                %(interest_rate)s,
+                %(risk_score)s,
+                %(application_timestamp)s,
+                %(processing_time_seconds)s
+            )
+            """
+            
+            params = {
+                'application_id': application_id,
+                'applicant_name': application_data.get('applicant_name'),
+                'age': application_data.get('age'),
+                'annual_income': application_data.get('annual_income'),
+                'employment_type': application_data.get('employment_type'),
+                'credit_score': application_data.get('credit_score'),
+                'loan_amount': application_data.get('loan_amount'),
+                'loan_purpose': application_data.get('loan_purpose'),
+                'loan_term': application_data.get('loan_term'),
+                'down_payment': application_data.get('down_payment'),
+                'debt_to_income_ratio': application_data.get('debt_to_income_ratio'),
+                'decision': decision_result.get('decision'),
+                'decision_reason': decision_result.get('reasoning', ''),
+                'approved_amount': decision_result.get('approved_amount'),
+                'interest_rate': decision_result.get('interest_rate'),
+                'risk_score': decision_result.get('risk_score'),
+                'application_timestamp': datetime.now(timezone.utc),
+                'processing_time_seconds': decision_result.get('processing_time', 0)
+            }
+            
+            self.execute_query(insert_query, params)
+            logger.info(f"Loan application {application_id} saved successfully")
+            
+            return application_id
+            
+        except Exception as e:
+            logger.error(f"Failed to save loan application: {e}")
+            raise
+    
+    def get_application_status(self, application_id: str) -> Optional[Dict]:
+        """Retrieve application status by ID"""
+        try:
+            query = f"""
+            SELECT * FROM {self.catalog}.{self.schema}.loan_applications 
+            WHERE application_id = %(application_id)s
+            """
+            
+            df = self.execute_query(query, {'application_id': application_id})
+            
+            if not df.empty:
+                return df.iloc[0].to_dict()
+            return None
+            
+        except Exception as e:
+            logger.error(f"Failed to get application status: {e}")
+            raise
+    
+    def get_analytics_data(self) -> Dict:
+        """Get analytics data for dashboard"""
+        try:
+            # Today's applications
+            today_query = f"""
+            SELECT COUNT(*) as count FROM {self.catalog}.{self.schema}.loan_applications
+            WHERE DATE(application_timestamp) = CURRENT_DATE()
+            """
+            
+            # Approval rate (last 30 days)
+            approval_rate_query = f"""
+            SELECT 
+                COUNT(*) as total,
+                SUM(CASE WHEN decision = 'approved' THEN 1 ELSE 0 END) as approved
+            FROM {self.catalog}.{self.schema}.loan_applications
+            WHERE application_timestamp >= CURRENT_DATE() - INTERVAL 30 DAYS
+            """
+            
+            # Average processing time
+            processing_time_query = f"""
+            SELECT AVG(processing_time_seconds) as avg_time
+            FROM {self.catalog}.{self.schema}.loan_applications
+            WHERE application_timestamp >= CURRENT_DATE() - INTERVAL 7 DAYS
+            """
+            
+            # Average credit score
+            credit_score_query = f"""
+            SELECT AVG(credit_score) as avg_score
+            FROM {self.catalog}.{self.schema}.loan_applications
+            WHERE application_timestamp >= CURRENT_DATE() - INTERVAL 30 DAYS
+            """
+            
+            today_count = self.execute_query(today_query)
+            approval_data = self.execute_query(approval_rate_query)
+            processing_time = self.execute_query(processing_time_query)
+            credit_score = self.execute_query(credit_score_query)
+            
+            # Calculate metrics
+            today_applications = today_count.iloc[0]['count'] if not today_count.empty else 0
+            
+            approval_rate = 0
+            if not approval_data.empty and approval_data.iloc[0]['total'] > 0:
+                approval_rate = (approval_data.iloc[0]['approved'] / approval_data.iloc[0]['total']) * 100
+            
+            avg_processing_time = processing_time.iloc[0]['avg_time'] if not processing_time.empty and processing_time.iloc[0]['avg_time'] else 0
+            avg_credit_score = credit_score.iloc[0]['avg_score'] if not credit_score.empty and credit_score.iloc[0]['avg_score'] else 0
+            
+            return {
+                'today_applications': int(today_applications),
+                'approval_rate': round(approval_rate, 1),
+                'avg_processing_time': round(float(avg_processing_time), 1),
+                'avg_credit_score': round(float(avg_credit_score))
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to get analytics data: {e}")
+            # Return default values if query fails
+            return {
+                'today_applications': 0,
+                'approval_rate': 0.0,
+                'avg_processing_time': 0.0,
+                'avg_credit_score': 0
+            }
+    
+    def get_application_trends(self, days: int = 30) -> pd.DataFrame:
+        """Get application trends for charting"""
+        try:
+            query = f"""
+            SELECT 
+                DATE(application_timestamp) as date,
+                COUNT(*) as total_applications,
+                SUM(CASE WHEN decision = 'approved' THEN 1 ELSE 0 END) as approved,
+                SUM(CASE WHEN decision = 'rejected' THEN 1 ELSE 0 END) as rejected,
+                AVG(loan_amount) as avg_loan_amount,
+                AVG(credit_score) as avg_credit_score
+            FROM {self.catalog}.{self.schema}.loan_applications
+            WHERE application_timestamp >= CURRENT_DATE() - INTERVAL {days} DAYS
+            GROUP BY DATE(application_timestamp)
+            ORDER BY date
+            """
+            
+            return self.execute_query(query)
+            
+        except Exception as e:
+            logger.error(f"Failed to get application trends: {e}")
+            return pd.DataFrame()
+    
+    def close_connections(self):
+        """Close all database connections"""
+        try:
+            if self.sql_connection:
+                self.sql_connection.close()
+                logger.info("SQL connection closed")
+        except Exception as e:
+            logger.error(f"Error closing connections: {e}")
+
+# Global instance
+databricks_manager = DatabricksManager()

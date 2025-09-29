@@ -33,6 +33,10 @@ A modern loan underwriting application powered by **Databricks Agent Bricks** an
 
 2. **Option 2 - Manual Setup:**
    ```bash
+   # First-time setup: Create your environment file
+   cp databricks_env.sh.template databricks_env.sh
+   # Edit databricks_env.sh with your actual credentials
+   
    # Load environment
    source databricks_env.sh
    
@@ -52,19 +56,22 @@ A modern loan underwriting application powered by **Databricks Agent Bricks** an
 
 ```
 loan-underwriting-app/
-├── app.py                    # Enhanced Streamlit application
-├── databricks_connection.py # Database integration module
-├── config.py                # Application configuration
-├── requirements.txt         # Python dependencies
-├── start_app.sh            # Quick launch script ⚡
-├── databricks_env.sh       # Environment variables 🔐
-├── setup_environment.sh    # Interactive setup guide
-├── app.yaml               # Deployment configuration
-├── deployment.yaml        # Kubernetes deployment
-├── environment_setup.md   # Setup documentation
+├── app.py                      # Enhanced Streamlit application
+├── agent_bricks_integration.py # Multi-agent underwriting system
+├── databricks_connection.py    # Database integration module
+├── config.py                   # Application configuration
+├── requirements.txt            # Python dependencies
+├── start_app.sh               # Quick launch script ⚡
+├── databricks_env.sh.template # Environment template (SAFE) 📋
+├── setup_environment.sh       # Interactive setup guide
+├── app.yaml                   # Deployment configuration
+├── deployment.yaml            # Kubernetes deployment
+├── environment_setup.md       # Setup documentation
 ├── .streamlit/
-│   └── config.toml        # UI theming
-└── README.md             # This file
+│   └── config.toml           # UI theming
+└── README.md                 # This file
+
+🔒 SECURITY: databricks_env.sh (with real credentials) is excluded via .gitignore
 ```
 
 ## Configuration
@@ -110,10 +117,22 @@ Edit `config.py` to modify:
 
 ## Security
 
+🔐 **Credential Protection:**
+- `databricks_env.sh` with real credentials is **git-ignored**
+- Use `databricks_env.sh.template` as a safe starting point
+- Never commit files containing API keys or tokens
+
+🛡️ **Application Security:**
 - Environment-based configuration
 - Secure token handling
 - CORS protection
 - Input validation
+
+⚠️ **Important:** Always copy the template and add your real credentials:
+```bash
+cp databricks_env.sh.template databricks_env.sh
+# Edit databricks_env.sh with your actual values
+```
 
 ## Support
 

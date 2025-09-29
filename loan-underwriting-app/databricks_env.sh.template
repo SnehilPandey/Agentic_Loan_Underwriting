@@ -1,0 +1,27 @@
+#!/bin/bash
+
+# Databricks Environment Configuration Template
+# Copy this file to databricks_env.sh and fill in your actual values
+# DO NOT commit databricks_env.sh - it contains sensitive credentials
+
+# Databricks Connection Settings
+export DATABRICKS_SERVER_HOSTNAME="your-workspace.cloud.databricks.com"
+export DATABRICKS_HTTP_PATH="/sql/1.0/warehouses/your-warehouse-id" 
+export DATABRICKS_TOKEN="your-databricks-token"
+
+# Agent Bricks Configuration (Optional - for HTTP API integration)
+# export AGENT_BRICKS_ENDPOINT="https://your-agent-bricks-api.com/api/v1/underwrite"
+# export AGENT_BRICKS_API_KEY="your-agent-bricks-api-key"
+
+# Use direct Python integration by default (set to "false" to use HTTP API)
+export USE_DIRECT_AGENT_BRICKS="true"
+
+# Confirmation messages
+echo "✅ Databricks environment variables loaded!"
+echo "✅ Agent Bricks configuration ready!"
+
+# Usage Instructions:
+# 1. Copy this file: cp databricks_env.sh.template databricks_env.sh
+# 2. Edit databricks_env.sh with your actual credentials
+# 3. Load variables: source databricks_env.sh
+# 4. Run your application: streamlit run app.py

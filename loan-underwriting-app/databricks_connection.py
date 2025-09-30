@@ -149,13 +149,29 @@ class DatabricksManager:
                         self.sql_connection.close()
                     except Exception:
                         pass  # Ignore errors when closing
-                        
-                self.sql_connection = sql.connect(
-                    server_hostname=self.server_hostname,
-                    http_path=self.http_path,
-                    access_token=self.token
-                )
-                logger.info("Databricks SQL connection established successfully")
+                
+                # Try native Databricks connection first (for Apps environment)
+                if self.is_databricks_environment:
+                    try:
+                        # In native Databricks environment, try without explicit credentials first
+                        self.sql_connection = sql.connect()
+                        logger.info("✅ Databricks SQL connection established using native authentication")
+                        return self.sql_connection
+                    except Exception as native_error:
+                        logger.warning(f"Native SQL connection failed: {native_error}, trying explicit credentials...")
+                
+                # Fallback to explicit credentials
+                connection_params = {}
+                if self.server_hostname:
+                    connection_params['server_hostname'] = self.server_hostname
+                if self.http_path:
+                    connection_params['http_path'] = self.http_path
+                if self.token:
+                    connection_params['access_token'] = self.token
+                    
+                self.sql_connection = sql.connect(**connection_params)
+                logger.info("✅ Databricks SQL connection established using explicit credentials")
+                
             except Exception as e:
                 logger.error(f"Failed to establish SQL connection: {e}")
                 raise

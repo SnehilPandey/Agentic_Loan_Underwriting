@@ -47,23 +47,6 @@ def call_agent_bricks_endpoint(application_data):
     if databricks_env:
         debug_info = f"Environment vars: {detected_vars}" if detected_vars else "Config auto-detection"
         st.sidebar.success(f"🔍 Databricks detected: {debug_info}")
-        
-        # Show available Databricks environment variables
-        import os
-        databricks_vars = {}
-        for var in ["DATABRICKS_HOST", "DATABRICKS_SERVER_HOSTNAME", "DATABRICKS_TOKEN", "DATABRICKS_HTTP_PATH"]:
-            value = os.getenv(var)
-            if value:
-                # Mask token for security
-                if "TOKEN" in var and len(value) > 10:
-                    databricks_vars[var] = f"{value[:10]}...{value[-4:]}"
-                else:
-                    databricks_vars[var] = value[:50] + "..." if len(value) > 50 else value
-        
-        if databricks_vars:
-            st.sidebar.info(f"📊 Available vars: {databricks_vars}")
-        else:
-            st.sidebar.warning("⚠️ No explicit Databricks vars found in Apps environment")
     else:
         st.sidebar.info("🔍 Local environment detected")
     

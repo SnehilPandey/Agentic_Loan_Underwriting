@@ -20,13 +20,17 @@ def call_agent_bricks_endpoint(application_data):
     import os
     
     # Check if using direct Python integration
-    use_direct = os.getenv("USE_DIRECT_AGENT_BRICKS", "false").lower() == "true"
+    # Default to direct integration in Databricks environment
+    databricks_env = any(os.getenv(var) for var in ["DATABRICKS_RUNTIME_VERSION", "DB_CLUSTER_ID", "SPARK_HOME"])
+    default_mode = "true" if databricks_env else "false"
+    use_direct = os.getenv("USE_DIRECT_AGENT_BRICKS", default_mode).lower() == "true"
     
     if use_direct:
         # Use direct Agent Bricks Python integration
         try:
             from agent_bricks_integration import agent_bricks_underwrite
-            st.info("🤖 Using Agent Bricks Direct Integration")
+            mode_reason = "🏢 Databricks environment detected" if databricks_env else "⚙️ Configured via USE_DIRECT_AGENT_BRICKS"
+            st.info(f"🤖 **Using Your Multi-Agent System** ({mode_reason})")
             return agent_bricks_underwrite(application_data)
         except ImportError as e:
             st.warning(f"Could not import Agent Bricks module: {e}. Using mock.")
@@ -40,7 +44,8 @@ def call_agent_bricks_endpoint(application_data):
     api_key = os.getenv("AGENT_BRICKS_API_KEY")
     
     if not endpoint_url:
-        st.info("🔄 No Agent Bricks endpoint configured - using mock decision engine")
+        st.warning("⚠️ **HTTP API mode but no endpoint configured** - using mock decision engine")
+        st.info("💡 To use your multi-agent system, set `USE_DIRECT_AGENT_BRICKS=true` or configure API endpoint")
         return create_mock_underwriting_decision(application_data)
     
     try:

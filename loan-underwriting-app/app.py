@@ -21,7 +21,35 @@ def call_agent_bricks_endpoint(application_data):
     
     # Check if using direct Python integration
     # Default to direct integration in Databricks environment
-    databricks_env = any(os.getenv(var) for var in ["DATABRICKS_RUNTIME_VERSION", "DB_CLUSTER_ID", "SPARK_HOME"])
+    databricks_indicators = [
+        "DATABRICKS_RUNTIME_VERSION",
+        "DB_CLUSTER_ID", 
+        "SPARK_HOME",
+        "DATABRICKS_TOKEN",
+        "DATABRICKS_HOST",
+        "DATABRICKS_SERVER_HOSTNAME"
+    ]
+    detected_vars = [var for var in databricks_indicators if os.getenv(var)]
+    databricks_env = bool(detected_vars)
+    
+    # Also check if we can detect Databricks Config
+    config_detected = False
+    if not databricks_env:
+        try:
+            from databricks.sdk import Config
+            test_config = Config()
+            config_detected = bool(test_config.host)
+            databricks_env = config_detected
+        except Exception:
+            pass
+    
+    # Debug logging for troubleshooting
+    if databricks_env:
+        debug_info = f"Environment vars: {detected_vars}" if detected_vars else "Config auto-detection"
+        st.sidebar.success(f"🔍 Databricks detected: {debug_info}")
+    else:
+        st.sidebar.info("🔍 Local environment detected")
+    
     default_mode = "true" if databricks_env else "false"
     use_direct = os.getenv("USE_DIRECT_AGENT_BRICKS", default_mode).lower() == "true"
     

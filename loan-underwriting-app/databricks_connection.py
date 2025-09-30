@@ -152,34 +152,20 @@ class DatabricksManager:
                 
                 # Try different connection methods for Databricks Apps
                 if self.is_databricks_environment:
-                    logger.info(f"🔍 DEBUG: Attempting SQL connection in Databricks environment")
-                    logger.info(f"🔍 DEBUG: server_hostname={self.server_hostname}")
-                    logger.info(f"🔍 DEBUG: http_path={self.http_path}")
-                    logger.info(f"🔍 DEBUG: token_available={'Yes' if self.token else 'No'}")
-                    
                     # Method 1: Try native connection with auto-detected warehouse
                     try:
                         if not self.http_path:
-                            logger.info("🔍 DEBUG: No http_path, attempting auto-detection...")
                             self.http_path = self._detect_sql_warehouse_path()
-                            logger.info(f"🔍 DEBUG: Auto-detected http_path={self.http_path}")
-                            
-                            # If auto-detection failed, try fallback warehouse
-                            if not self.http_path:
-                                self.http_path = "/sql/1.0/warehouses/0dde98a1c72016fc"
-                                logger.info(f"🔍 DEBUG: Using fallback http_path={self.http_path}")
                         
                         if self.http_path:
-                            logger.info(f"🔍 DEBUG: Trying sql.connect(http_path='{self.http_path}')")
                             self.sql_connection = sql.connect(http_path=self.http_path)
-                            logger.info("✅ Databricks SQL connection established using native auth + warehouse")
+                            logger.info("✅ Databricks SQL connection established using native auth + detected warehouse")
                             return self.sql_connection
                     except Exception as e:
                         logger.warning(f"Native connection with detected warehouse failed: {e}")
                     
                     # Method 2: Try pure native connection
                     try:
-                        logger.info("🔍 DEBUG: Trying sql.connect() with no parameters")
                         self.sql_connection = sql.connect()
                         logger.info("✅ Databricks SQL connection established using pure native authentication")
                         return self.sql_connection
@@ -188,34 +174,16 @@ class DatabricksManager:
                 
                 # Method 3: Fallback to explicit credentials
                 connection_params = {}
-                
-                # Use DATABRICKS_HOST if available (common in Databricks Apps)
-                host = self.server_hostname or os.getenv("DATABRICKS_HOST")
-                if host:
-                    # Ensure proper format
-                    if not host.startswith('https://'):
-                        host = f"https://{host}"
-                    connection_params['server_hostname'] = host
-                
+                if self.server_hostname:
+                    connection_params['server_hostname'] = self.server_hostname
                 if self.http_path:
                     connection_params['http_path'] = self.http_path
-                elif self.is_databricks_environment:
-                    # Try to auto-detect warehouse again
-                    detected_path = self._detect_sql_warehouse_path()
-                    if detected_path:
-                        connection_params['http_path'] = detected_path
-                    else:
-                        # Fallback to known working warehouse for this environment
-                        fallback_path = "/sql/1.0/warehouses/0dde98a1c72016fc"
-                        connection_params['http_path'] = fallback_path
-                        logger.info(f"🔍 DEBUG: Using fallback warehouse path: {fallback_path}")
-                
                 if self.token:
                     connection_params['access_token'] = self.token
                     
                 if connection_params:
                     self.sql_connection = sql.connect(**connection_params)
-                    logger.info(f"✅ Databricks SQL connection established using explicit credentials: {list(connection_params.keys())}")
+                    logger.info("✅ Databricks SQL connection established using explicit credentials")
                 else:
                     raise Exception("No valid connection parameters available")
                 

@@ -32,22 +32,92 @@ class DatabricksManager:
         self.catalog = os.getenv("DATABRICKS_CATALOG", "main")
         self.schema = os.getenv("DATABRICKS_SCHEMA", "loan_underwriting")
         
-        # Validate required configuration
-        if not all([self.server_hostname, self.http_path, self.token]):
-            logger.warning("Missing Databricks configuration. App will run in demo mode.")
-            self.credentials_available = False
-        else:
-            self.credentials_available = True
+        # Try to detect if running in Databricks environment
+        self.is_databricks_environment = self._detect_databricks_environment()
+        
+        # Initialize credentials
+        if self.is_databricks_environment:
+            # Running in Databricks - try native authentication first
             try:
-                # Only initialize Config if credentials are available
-                self.config = Config(
-                    host=self.server_hostname,
-                    token=self.token
-                )
-                logger.info("Databricks configuration initialized successfully")
+                self.config = Config()  # Uses default authentication
+                logger.info("✅ Using native Databricks authentication")
+                self.credentials_available = True
+                
+                # If we don't have explicit SQL warehouse path, try to detect or use default
+                if not self.http_path:
+                    self.http_path = self._detect_sql_warehouse_path()
+                    
             except Exception as e:
-                logger.warning(f"Databricks config initialization failed: {e}. Running in demo mode.")
-                self.credentials_available = False
+                logger.warning(f"Native Databricks auth failed: {e}, trying explicit credentials...")
+                self.credentials_available = self._try_explicit_credentials()
+        else:
+            # Not in Databricks environment - require explicit credentials
+            self.credentials_available = self._try_explicit_credentials()
+    
+    def _detect_databricks_environment(self) -> bool:
+        """Detect if running in Databricks environment"""
+        # Check for Databricks-specific environment variables
+        databricks_indicators = [
+            "DATABRICKS_RUNTIME_VERSION",
+            "DB_CLUSTER_ID", 
+            "SPARK_HOME",
+            "DATABRICKS_TOKEN",  # Even explicit tokens indicate Databricks env
+        ]
+        
+        for indicator in databricks_indicators:
+            if os.getenv(indicator):
+                logger.info(f"🔍 Databricks environment detected via {indicator}")
+                return True
+                
+        # Check if we can access Databricks APIs without explicit credentials
+        try:
+            test_config = Config()
+            if test_config.host:  # If Config can detect host, we're in Databricks
+                logger.info("🔍 Databricks environment detected via Config auto-detection")
+                return True
+        except Exception:
+            pass
+            
+        return False
+    
+    def _detect_sql_warehouse_path(self) -> str:
+        """Try to detect an available SQL warehouse"""
+        try:
+            if self.config:
+                client = WorkspaceClient(config=self.config)
+                warehouses = list(client.warehouses.list())
+                for warehouse in warehouses:
+                    if hasattr(warehouse, 'state') and warehouse.state and hasattr(warehouse.state, 'name') and warehouse.state.name == "RUNNING":
+                        path = f"/sql/1.0/warehouses/{warehouse.id}"
+                        logger.info(f"🔍 Auto-detected SQL warehouse: {path}")
+                        return path
+                # If no running warehouse, use the first available
+                if warehouses:
+                    path = f"/sql/1.0/warehouses/{warehouses[0].id}"
+                    logger.info(f"🔍 Using first available SQL warehouse: {path}")
+                    return path
+        except Exception as e:
+            logger.warning(f"Could not auto-detect SQL warehouse: {e}")
+        
+        # Fallback to environment variable or None
+        return self.http_path
+    
+    def _try_explicit_credentials(self) -> bool:
+        """Try to use explicit credentials from environment variables"""
+        if not all([self.server_hostname, self.http_path, self.token]):
+            logger.warning("Missing explicit Databricks credentials. App will run in demo mode.")
+            return False
+        
+        try:
+            self.config = Config(
+                host=self.server_hostname,
+                token=self.token
+            )
+            logger.info("✅ Databricks configuration initialized with explicit credentials")
+            return True
+        except Exception as e:
+            logger.warning(f"Explicit credentials failed: {e}. Running in demo mode.")
+            return False
     
     def get_workspace_client(self) -> WorkspaceClient:
         """Get authenticated Databricks workspace client"""

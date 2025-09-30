@@ -109,8 +109,12 @@ def initialize_databricks():
     try:
         databricks_manager = get_db_manager()
         if not databricks_manager.credentials_available:
-            st.warning("⚠️ Databricks credentials not configured - running in demo mode")
-            st.info("💡 To connect to Databricks, set environment variables: DATABRICKS_SERVER_HOSTNAME, DATABRICKS_HTTP_PATH, DATABRICKS_TOKEN")
+            if hasattr(databricks_manager, 'is_databricks_environment') and databricks_manager.is_databricks_environment:
+                st.warning("⚠️ Databricks environment detected but connection failed - running in demo mode")
+                st.info("💡 This may be due to missing SQL warehouse configuration or permissions")
+            else:
+                st.warning("⚠️ Databricks credentials not configured - running in demo mode")
+                st.info("💡 To connect to Databricks, set environment variables: DATABRICKS_SERVER_HOSTNAME, DATABRICKS_HTTP_PATH, DATABRICKS_TOKEN")
             return False
         
         databricks_manager.create_schema_if_not_exists()

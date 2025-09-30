@@ -163,11 +163,16 @@ class DatabricksManager:
                             logger.info("🔍 DEBUG: No http_path, attempting auto-detection...")
                             self.http_path = self._detect_sql_warehouse_path()
                             logger.info(f"🔍 DEBUG: Auto-detected http_path={self.http_path}")
+                            
+                            # If auto-detection failed, try fallback warehouse
+                            if not self.http_path:
+                                self.http_path = "/sql/1.0/warehouses/0dde98a1c72016fc"
+                                logger.info(f"🔍 DEBUG: Using fallback http_path={self.http_path}")
                         
                         if self.http_path:
                             logger.info(f"🔍 DEBUG: Trying sql.connect(http_path='{self.http_path}')")
                             self.sql_connection = sql.connect(http_path=self.http_path)
-                            logger.info("✅ Databricks SQL connection established using native auth + detected warehouse")
+                            logger.info("✅ Databricks SQL connection established using native auth + warehouse")
                             return self.sql_connection
                     except Exception as e:
                         logger.warning(f"Native connection with detected warehouse failed: {e}")
@@ -199,6 +204,11 @@ class DatabricksManager:
                     detected_path = self._detect_sql_warehouse_path()
                     if detected_path:
                         connection_params['http_path'] = detected_path
+                    else:
+                        # Fallback to known working warehouse for this environment
+                        fallback_path = "/sql/1.0/warehouses/0dde98a1c72016fc"
+                        connection_params['http_path'] = fallback_path
+                        logger.info(f"🔍 DEBUG: Using fallback warehouse path: {fallback_path}")
                 
                 if self.token:
                     connection_params['access_token'] = self.token

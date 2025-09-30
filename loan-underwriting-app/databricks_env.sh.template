@@ -6,7 +6,7 @@
 
 # Databricks Connection Settings
 export DATABRICKS_SERVER_HOSTNAME="your-workspace.cloud.databricks.com"
-export DATABRICKS_HTTP_PATH="/sql/1.0/warehouses/your-warehouse-id" 
+export DATABRICKS_HTTP_PATH="/sql/1.0/warehouses/0dde98a1c72016fc" 
 export DATABRICKS_TOKEN="your-databricks-token"
 
 # Agent Bricks Configuration (Optional - for HTTP API integration)

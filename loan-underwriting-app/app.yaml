@@ -1,7 +1,11 @@
 command: ["streamlit", "run", "app.py", "--server.port", "8000"]
 description: "Loan Underwriting Application powered by Agent Bricks"
 env:
-  - name: DATABRICKS_HOST
-    value: "${workspace.host}"
+  - name: DATABRICKS_SERVER_HOSTNAME
+    value: "https://e2-dogfood.staging.cloud.databricks.com"
+  - name: DATABRICKS_HTTP_PATH
+    value: "/sql/1.0/warehouses/0dde98a1c72016fc"
   - name: DATABRICKS_TOKEN
     value: "${secrets.databricks_token}"
+  - name: USE_DIRECT_AGENT_BRICKS
+    value: "true"

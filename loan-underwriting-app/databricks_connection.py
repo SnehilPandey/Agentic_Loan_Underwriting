@@ -150,17 +150,29 @@ class DatabricksManager:
                     except Exception:
                         pass  # Ignore errors when closing
                 
-                # Try native Databricks connection first (for Apps environment)
+                # Try different connection methods for Databricks Apps
                 if self.is_databricks_environment:
+                    # Method 1: Try native connection with auto-detected warehouse
                     try:
-                        # In native Databricks environment, try without explicit credentials first
+                        if not self.http_path:
+                            self.http_path = self._detect_sql_warehouse_path()
+                        
+                        if self.http_path:
+                            self.sql_connection = sql.connect(http_path=self.http_path)
+                            logger.info("✅ Databricks SQL connection established using native auth + detected warehouse")
+                            return self.sql_connection
+                    except Exception as e:
+                        logger.warning(f"Native connection with detected warehouse failed: {e}")
+                    
+                    # Method 2: Try pure native connection
+                    try:
                         self.sql_connection = sql.connect()
-                        logger.info("✅ Databricks SQL connection established using native authentication")
+                        logger.info("✅ Databricks SQL connection established using pure native authentication")
                         return self.sql_connection
-                    except Exception as native_error:
-                        logger.warning(f"Native SQL connection failed: {native_error}, trying explicit credentials...")
+                    except Exception as e:
+                        logger.warning(f"Pure native SQL connection failed: {e}")
                 
-                # Fallback to explicit credentials
+                # Method 3: Fallback to explicit credentials
                 connection_params = {}
                 if self.server_hostname:
                     connection_params['server_hostname'] = self.server_hostname
@@ -169,8 +181,11 @@ class DatabricksManager:
                 if self.token:
                     connection_params['access_token'] = self.token
                     
-                self.sql_connection = sql.connect(**connection_params)
-                logger.info("✅ Databricks SQL connection established using explicit credentials")
+                if connection_params:
+                    self.sql_connection = sql.connect(**connection_params)
+                    logger.info("✅ Databricks SQL connection established using explicit credentials")
+                else:
+                    raise Exception("No valid connection parameters available")
                 
             except Exception as e:
                 logger.error(f"Failed to establish SQL connection: {e}")

@@ -256,8 +256,6 @@ def main():
                         
                     except Exception as e:
                         st.error(f"Error processing application: {str(e)}")
-            else:
-                st.error("Please fill in all required fields")
     
     with tab2:
         st.header("Check Application Status")

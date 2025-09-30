@@ -143,28 +143,47 @@ def main():
     
     with tab1:
         st.header("Submit Loan Application")
+        st.info("📝 Fill out the form below to get instant loan decision from our AI agents. Fields marked with * are required.")
         
         # Application form
         col1, col2 = st.columns(2)
         
         with col1:
-            applicant_name = st.text_input("Full Name")
-            age = st.number_input("Age", min_value=18, max_value=100)
-            income = st.number_input("Annual Income ($)", min_value=0)
+            applicant_name = st.text_input("Full Name *", placeholder="Enter your full name")
+            age = st.number_input("Age *", min_value=18, max_value=100, value=30)
+            income = st.number_input("Annual Income ($) *", min_value=1, max_value=10000000, value=50000, step=1000)
             employment_type = st.selectbox("Employment Type", 
                                          ["Full-time", "Part-time", "Self-employed", "Unemployed"])
-            credit_score = st.number_input("Credit Score", min_value=300, max_value=850)
+            credit_score = st.number_input("Credit Score *", min_value=300, max_value=850, value=650, step=10)
         
         with col2:
-            loan_amount = st.number_input("Loan Amount ($)", min_value=1000)
+            loan_amount = st.number_input("Loan Amount ($) *", min_value=1000, max_value=10000000, value=25000, step=1000)
             loan_purpose = st.selectbox("Loan Purpose", 
                                       ["Home Purchase", "Auto", "Personal", "Business", "Education"])
             loan_term = st.selectbox("Loan Term (months)", [12, 24, 36, 48, 60, 120, 240, 360])
-            down_payment = st.number_input("Down Payment ($)", min_value=0)
+            down_payment = st.number_input("Down Payment ($)", min_value=0, value=0, step=1000)
             debt_to_income = st.slider("Debt-to-Income Ratio (%)", 0, 100, 25)
         
         if st.button("Submit Application", type="primary"):
-            if applicant_name and income > 0 and loan_amount > 0:
+            # Comprehensive validation
+            validation_errors = []
+            
+            if not applicant_name or applicant_name.strip() == "":
+                validation_errors.append("Full Name is required")
+            if age < 18:
+                validation_errors.append("Age must be 18 or older")
+            if income <= 0:
+                validation_errors.append("Annual Income must be greater than 0")
+            if credit_score < 300 or credit_score > 850:
+                validation_errors.append("Credit Score must be between 300 and 850")
+            if loan_amount < 1000:
+                validation_errors.append("Loan Amount must be at least $1,000")
+            
+            if validation_errors:
+                st.error("Please fix the following errors:")
+                for error in validation_errors:
+                    st.error(f"• {error}")
+            else:
                 # Prepare application data
                 application_data = {
                     "applicant_name": applicant_name,

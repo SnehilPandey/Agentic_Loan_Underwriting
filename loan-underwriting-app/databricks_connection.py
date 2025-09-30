@@ -66,13 +66,20 @@ class DatabricksManager:
                 raise
         return self.workspace_client
     
-    def get_sql_connection(self):
+    def get_sql_connection(self, force_reconnect=False):
         """Get SQL connection for data operations"""
         if not self.credentials_available:
             raise ValueError("Databricks credentials not configured")
             
-        if not self.sql_connection:
+        if not self.sql_connection or force_reconnect:
             try:
+                # Close existing connection if it exists
+                if self.sql_connection:
+                    try:
+                        self.sql_connection.close()
+                    except Exception:
+                        pass  # Ignore errors when closing
+                        
                 self.sql_connection = sql.connect(
                     server_hostname=self.server_hostname,
                     http_path=self.http_path,
@@ -84,31 +91,40 @@ class DatabricksManager:
                 raise
         return self.sql_connection
     
-    def execute_query(self, query: str, params: Optional[Dict] = None) -> pd.DataFrame:
+    def execute_query(self, query: str, params: Optional[Dict] = None, retry_count: int = 1) -> pd.DataFrame:
         """Execute SQL query and return results as DataFrame"""
         if not self.credentials_available:
             raise ValueError("Databricks credentials not configured")
-            
-        try:
-            connection = self.get_sql_connection()
-            with connection.cursor() as cursor:
-                cursor.execute(query, params or {})
-                
-                # Fetch column names
-                columns = [desc[0] for desc in cursor.description] if cursor.description else []
-                
-                # Fetch all results
-                results = cursor.fetchall()
-                
-                # Convert to DataFrame
-                if results and columns:
-                    return pd.DataFrame(results, columns=columns)
-                else:
-                    return pd.DataFrame()
+        
+        for attempt in range(retry_count + 1):
+            try:
+                connection = self.get_sql_connection(force_reconnect=(attempt > 0))
+                with connection.cursor() as cursor:
+                    cursor.execute(query, params or {})
                     
-        except Exception as e:
-            logger.error(f"Query execution failed: {e}")
-            raise
+                    # Fetch column names
+                    columns = [desc[0] for desc in cursor.description] if cursor.description else []
+                    
+                    # Fetch all results
+                    results = cursor.fetchall()
+                    
+                    # Convert to DataFrame
+                    if results and columns:
+                        return pd.DataFrame(results, columns=columns)
+                    else:
+                        return pd.DataFrame()
+                        
+            except Exception as e:
+                error_msg = str(e)
+                if "INVALID_STATE" in error_msg or "SessionHandle" in error_msg:
+                    if attempt < retry_count:
+                        logger.warning(f"Session expired, retrying... (attempt {attempt + 1})")
+                        continue
+                    else:
+                        logger.error(f"Query execution failed after {retry_count + 1} attempts: {e}")
+                else:
+                    logger.error(f"Query execution failed: {e}")
+                raise
     
     def create_schema_if_not_exists(self):
         """Create the loan underwriting schema and tables if they don't exist"""

@@ -201,74 +201,36 @@ class DatabricksManager:
                     except Exception:
                         pass  # Ignore errors when closing
                 
-                # Try different connection methods for Databricks Apps
-                if self.is_databricks_environment:
-                    logger.info(f"🔍 DEBUG: Attempting SQL connection in Databricks environment")
-                    logger.info(f"🔍 DEBUG: server_hostname={self.server_hostname}")
-                    logger.info(f"🔍 DEBUG: http_path={self.http_path}")
-                    logger.info(f"🔍 DEBUG: token_available={'Yes' if self.token else 'No'}")
-                    
-                    # Method 1: Try native connection with auto-detected warehouse
+                logger.info(f"🔍 DEBUG: Attempting SQL connection")
+                logger.info(f"🔍 DEBUG: server_hostname={self.server_hostname}")
+                logger.info(f"🔍 DEBUG: http_path={self.http_path}")
+                logger.info(f"🔍 DEBUG: token_available={'Yes' if self.token else 'No'}")
+                
+                # Direct connection using available environment variables
+                if self.server_hostname and self.http_path and self.token:
                     try:
-                        if not self.http_path:
-                            logger.info("🔍 DEBUG: No http_path, attempting auto-detection...")
-                            self.http_path = self._detect_sql_warehouse_path()
-                            logger.info(f"🔍 DEBUG: Auto-detected http_path={self.http_path}")
-                            
-                            # If auto-detection failed, try fallback warehouse
-                            if not self.http_path:
-                                self.http_path = "/sql/1.0/warehouses/0dde98a1c72016fc"
-                                logger.info(f"🔍 DEBUG: Using fallback http_path={self.http_path}")
-                        
-                        if self.http_path:
-                            logger.info(f"🔍 DEBUG: Trying sql.connect(http_path='{self.http_path}')")
-                            self.sql_connection = sql.connect(http_path=self.http_path)
-                            logger.info("✅ Databricks SQL connection established using native auth + warehouse")
-                            return self.sql_connection
-                    except Exception as e:
-                        logger.warning(f"Native connection with detected warehouse failed: {e}")
-                    
-                    # Method 2: Try pure native connection
-                    try:
-                        logger.info("🔍 DEBUG: Trying sql.connect() with no parameters")
-                        self.sql_connection = sql.connect()
-                        logger.info("✅ Databricks SQL connection established using pure native authentication")
+                        logger.info("🔍 DEBUG: Using direct environment variable connection")
+                        self.sql_connection = sql.connect(
+                            server_hostname=self.server_hostname,
+                            http_path=self.http_path,
+                            access_token=self.token
+                        )
+                        logger.info("✅ Databricks SQL connection established using environment variables")
                         return self.sql_connection
                     except Exception as e:
-                        logger.warning(f"Pure native SQL connection failed: {e}")
+                        logger.warning(f"Direct environment connection failed: {e}")
                 
-                # Method 3: Fallback to explicit credentials
-                connection_params = {}
+                # Fallback to native connection for Databricks environment
+                if self.is_databricks_environment:
+                    try:
+                        logger.info("🔍 DEBUG: Trying native sql.connect() fallback")
+                        self.sql_connection = sql.connect()
+                        logger.info("✅ Databricks SQL connection established using native authentication")
+                        return self.sql_connection
+                    except Exception as e:
+                        logger.warning(f"Native SQL connection failed: {e}")
                 
-                # Use DATABRICKS_HOST if available (common in Databricks Apps)
-                host = self.server_hostname or os.getenv("DATABRICKS_HOST")
-                if host:
-                    # Ensure proper format
-                    if not host.startswith('https://'):
-                        host = f"https://{host}"
-                    connection_params['server_hostname'] = host
-                
-                if self.http_path:
-                    connection_params['http_path'] = self.http_path
-                elif self.is_databricks_environment:
-                    # Try to auto-detect warehouse again
-                    detected_path = self._detect_sql_warehouse_path()
-                    if detected_path:
-                        connection_params['http_path'] = detected_path
-                    else:
-                        # Fallback to known working warehouse for this environment
-                        fallback_path = "/sql/1.0/warehouses/0dde98a1c72016fc"
-                        connection_params['http_path'] = fallback_path
-                        logger.info(f"🔍 DEBUG: Using fallback warehouse path: {fallback_path}")
-                
-                if self.token:
-                    connection_params['access_token'] = self.token
-                    
-                if connection_params:
-                    self.sql_connection = sql.connect(**connection_params)
-                    logger.info(f"✅ Databricks SQL connection established using explicit credentials: {list(connection_params.keys())}")
-                else:
-                    raise Exception("No valid connection parameters available")
+                raise Exception("All connection methods failed")
                 
             except Exception as e:
                 logger.error(f"Failed to establish SQL connection: {e}")

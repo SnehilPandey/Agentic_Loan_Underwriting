@@ -35,9 +35,23 @@ class DatabricksManager:
         # Try to detect if running in Databricks environment
         self.is_databricks_environment = self._detect_databricks_environment()
         
-        # Initialize credentials
-        if self.is_databricks_environment:
-            # Running in Databricks - try native authentication first
+        # Initialize credentials - prioritize environment variables when available
+        if self.server_hostname and self.token and self.http_path:
+            # All required credentials available from environment variables
+            try:
+                self.config = Config(
+                    host=self.server_hostname,
+                    token=self.token
+                )
+                logger.info(f"✅ Using environment credentials: {self.server_hostname}")
+                logger.info(f"✅ SQL warehouse: {self.http_path}")
+                self.credentials_available = True
+            except Exception as e:
+                logger.warning(f"Environment credentials failed: {e}")
+                self.credentials_available = False
+                
+        elif self.is_databricks_environment:
+            # Fallback to native authentication
             try:
                 self.config = Config()  # Uses default authentication
                 logger.info("✅ Using native Databricks authentication")
@@ -78,6 +92,43 @@ class DatabricksManager:
         except Exception:
             pass
             
+        return False
+    
+    def _try_hardcoded_staging_credentials(self) -> bool:
+        """Try to use hardcoded credentials for staging environment"""
+        # Only use hardcoded credentials in Databricks Apps environment
+        # Check if this looks like the staging environment
+        try:
+            from databricks.sdk import Config
+            test_config = Config()
+            
+            # Check if we're in the e2-dogfood staging environment
+            if test_config.host and "e2-dogfood.staging.cloud.databricks.com" in test_config.host:
+                # Use staging environment configuration (token from environment)
+                self.server_hostname = "https://e2-dogfood.staging.cloud.databricks.com"
+                self.http_path = "/sql/1.0/warehouses/0dde98a1c72016fc"
+                
+                # Try to get token from environment first, then use detected config
+                staging_token = os.getenv("DATABRICKS_TOKEN")
+                if not staging_token and hasattr(test_config, 'token'):
+                    staging_token = test_config.token
+                
+                if staging_token:
+                    self.token = staging_token
+                    # Initialize config with staging values
+                    self.config = Config(
+                        host=self.server_hostname,
+                        token=self.token
+                    )
+                    logger.info("🔧 Using staging environment configuration")
+                    return True
+                else:
+                    logger.warning("Staging environment detected but no token available")
+                    return False
+                
+        except Exception as e:
+            logger.warning(f"Failed to detect staging environment: {e}")
+        
         return False
     
     def _detect_sql_warehouse_path(self) -> str:
@@ -152,20 +203,34 @@ class DatabricksManager:
                 
                 # Try different connection methods for Databricks Apps
                 if self.is_databricks_environment:
+                    logger.info(f"🔍 DEBUG: Attempting SQL connection in Databricks environment")
+                    logger.info(f"🔍 DEBUG: server_hostname={self.server_hostname}")
+                    logger.info(f"🔍 DEBUG: http_path={self.http_path}")
+                    logger.info(f"🔍 DEBUG: token_available={'Yes' if self.token else 'No'}")
+                    
                     # Method 1: Try native connection with auto-detected warehouse
                     try:
                         if not self.http_path:
+                            logger.info("🔍 DEBUG: No http_path, attempting auto-detection...")
                             self.http_path = self._detect_sql_warehouse_path()
+                            logger.info(f"🔍 DEBUG: Auto-detected http_path={self.http_path}")
+                            
+                            # If auto-detection failed, try fallback warehouse
+                            if not self.http_path:
+                                self.http_path = "/sql/1.0/warehouses/0dde98a1c72016fc"
+                                logger.info(f"🔍 DEBUG: Using fallback http_path={self.http_path}")
                         
                         if self.http_path:
+                            logger.info(f"🔍 DEBUG: Trying sql.connect(http_path='{self.http_path}')")
                             self.sql_connection = sql.connect(http_path=self.http_path)
-                            logger.info("✅ Databricks SQL connection established using native auth + detected warehouse")
+                            logger.info("✅ Databricks SQL connection established using native auth + warehouse")
                             return self.sql_connection
                     except Exception as e:
                         logger.warning(f"Native connection with detected warehouse failed: {e}")
                     
                     # Method 2: Try pure native connection
                     try:
+                        logger.info("🔍 DEBUG: Trying sql.connect() with no parameters")
                         self.sql_connection = sql.connect()
                         logger.info("✅ Databricks SQL connection established using pure native authentication")
                         return self.sql_connection
@@ -174,16 +239,34 @@ class DatabricksManager:
                 
                 # Method 3: Fallback to explicit credentials
                 connection_params = {}
-                if self.server_hostname:
-                    connection_params['server_hostname'] = self.server_hostname
+                
+                # Use DATABRICKS_HOST if available (common in Databricks Apps)
+                host = self.server_hostname or os.getenv("DATABRICKS_HOST")
+                if host:
+                    # Ensure proper format
+                    if not host.startswith('https://'):
+                        host = f"https://{host}"
+                    connection_params['server_hostname'] = host
+                
                 if self.http_path:
                     connection_params['http_path'] = self.http_path
+                elif self.is_databricks_environment:
+                    # Try to auto-detect warehouse again
+                    detected_path = self._detect_sql_warehouse_path()
+                    if detected_path:
+                        connection_params['http_path'] = detected_path
+                    else:
+                        # Fallback to known working warehouse for this environment
+                        fallback_path = "/sql/1.0/warehouses/0dde98a1c72016fc"
+                        connection_params['http_path'] = fallback_path
+                        logger.info(f"🔍 DEBUG: Using fallback warehouse path: {fallback_path}")
+                
                 if self.token:
                     connection_params['access_token'] = self.token
                     
                 if connection_params:
                     self.sql_connection = sql.connect(**connection_params)
-                    logger.info("✅ Databricks SQL connection established using explicit credentials")
+                    logger.info(f"✅ Databricks SQL connection established using explicit credentials: {list(connection_params.keys())}")
                 else:
                     raise Exception("No valid connection parameters available")
                 

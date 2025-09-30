@@ -8,7 +8,12 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 
 # Import our Databricks connection module
-from databricks_connection import databricks_manager
+from databricks_connection import get_databricks_manager
+
+# Utility function to get databricks manager safely
+def get_db_manager():
+    """Get databricks manager safely"""
+    return get_databricks_manager()
 
 def call_agent_bricks_endpoint(application_data):
     """Call your Agent Bricks underwriting system"""
@@ -101,12 +106,13 @@ def create_mock_underwriting_decision(application_data):
 @st.cache_resource
 def initialize_databricks():
     """Initialize Databricks connection and create schema"""
-    if not databricks_manager.credentials_available:
-        st.warning("⚠️ Databricks credentials not configured - running in demo mode")
-        st.info("💡 To connect to Databricks, set environment variables: DATABRICKS_SERVER_HOSTNAME, DATABRICKS_HTTP_PATH, DATABRICKS_TOKEN")
-        return False
-    
     try:
+        databricks_manager = get_db_manager()
+        if not databricks_manager.credentials_available:
+            st.warning("⚠️ Databricks credentials not configured - running in demo mode")
+            st.info("💡 To connect to Databricks, set environment variables: DATABRICKS_SERVER_HOSTNAME, DATABRICKS_HTTP_PATH, DATABRICKS_TOKEN")
+            return False
+        
         databricks_manager.create_schema_if_not_exists()
         st.success("✅ Databricks connection initialized successfully!")
         return True
@@ -178,7 +184,7 @@ def main():
                         application_id = None
                         if databricks_connected:
                             try:
-                                application_id = databricks_manager.save_loan_application(application_data, result)
+                                application_id = get_db_manager().save_loan_application(application_data, result)
                                 st.success(f"📝 Application saved with ID: `{application_id}`")
                             except Exception as e:
                                 st.warning(f"Could not save to database: {e}")
@@ -243,7 +249,7 @@ def main():
             else:
                 with st.spinner("Looking up application..."):
                     try:
-                        status_data = databricks_manager.get_application_status(application_id)
+                        status_data = get_db_manager().get_application_status(application_id)
                         
                         if status_data:
                             st.success("✅ Application Found!")
@@ -287,13 +293,14 @@ def main():
             st.subheader("📋 Recent Applications")
             try:
                 # Query recent applications
+                db_manager = get_db_manager()
                 recent_query = f"""
                 SELECT application_id, applicant_name, decision, application_timestamp, loan_amount
-                FROM {databricks_manager.catalog}.{databricks_manager.schema}.loan_applications
+                FROM {db_manager.catalog}.{db_manager.schema}.loan_applications
                 ORDER BY application_timestamp DESC
                 LIMIT 10
                 """
-                recent_df = databricks_manager.execute_query(recent_query)
+                recent_df = db_manager.execute_query(recent_query)
                 
                 if not recent_df.empty:
                     st.dataframe(
@@ -319,8 +326,9 @@ def main():
         if databricks_connected:
             # Get real analytics data
             try:
-                analytics_data = databricks_manager.get_analytics_data()
-                trends_data = databricks_manager.get_application_trends(days=30)
+                db_manager = get_db_manager()
+                analytics_data = db_manager.get_analytics_data()
+                trends_data = db_manager.get_application_trends(days=30)
                 
                 # Metrics dashboard
                 col1, col2, col3, col4 = st.columns(4)

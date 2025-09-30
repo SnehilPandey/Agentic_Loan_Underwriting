@@ -358,5 +358,12 @@ class DatabricksManager:
         except Exception as e:
             logger.error(f"Error closing connections: {e}")
 
-# Global instance
-databricks_manager = DatabricksManager()
+# Global instance - lazy initialization
+_databricks_manager = None
+
+def get_databricks_manager():
+    """Get the global databricks manager instance (lazy initialization)"""
+    global _databricks_manager
+    if _databricks_manager is None:
+        _databricks_manager = DatabricksManager()
+    return _databricks_manager

@@ -287,6 +287,32 @@ def main():
                             st.markdown("**Decision Reasoning:**")
                             st.info(result["reasoning"])
                         
+                        # Show detailed agent decisions
+                        if result.get("agent_details"):
+                            st.markdown("---")
+                            st.markdown("### 🤖 **Multi-Agent Analysis Results**")
+                            
+                            agent_details = result.get("agent_details", [])
+                            for i, agent in enumerate(agent_details):
+                                agent_name = agent.get("agent", "Unknown Agent").replace("_", " ").title()
+                                decision = agent.get("decision", "unknown")
+                                confidence = agent.get("confidence", 0)
+                                reasoning = agent.get("reasoning", "No reasoning provided")
+                                
+                                # Create expandable section for each agent
+                                with st.expander(f"**{agent_name}** - {decision.upper()} ({confidence:.1f}% confidence)", expanded=(i==0)):
+                                    if decision.lower() == "approve":
+                                        st.success(f"✅ **Recommendation:** {decision.upper()}")
+                                    else:
+                                        st.error(f"❌ **Recommendation:** {decision.upper()}")
+                                    
+                                    st.write(f"**Confidence Level:** {confidence:.1f}%")
+                                    st.write(f"**Analysis:** {reasoning}")
+                            
+                            # Show orchestration summary if available
+                            if len(agent_details) > 0:
+                                st.info(f"📊 **Final Decision**: Based on analysis from {len(agent_details)} specialist AI agents")
+                        
                         # Download decision letter
                         if st.button("📄 Download Decision Letter"):
                             decision_letter = generate_decision_letter(application_data, result, application_id)

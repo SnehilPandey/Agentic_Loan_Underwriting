@@ -53,6 +53,16 @@ def call_agent_bricks_endpoint(application_data):
     default_mode = "true" if databricks_env else "false"
     use_direct = os.getenv("USE_DIRECT_AGENT_BRICKS", default_mode).lower() == "true"
     
+    # OVERRIDE: Force direct integration if agent_bricks_integration.py exists
+    # This handles cases where environment detection fails in Databricks Apps
+    if not use_direct:
+        try:
+            import agent_bricks_integration
+            st.sidebar.warning("🔧 Environment detection failed - forcing direct integration")
+            use_direct = True
+        except ImportError:
+            pass
+    
     if use_direct:
         # Use direct Agent Bricks Python integration
         try:

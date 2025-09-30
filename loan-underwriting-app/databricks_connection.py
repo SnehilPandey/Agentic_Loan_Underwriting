@@ -174,16 +174,29 @@ class DatabricksManager:
                 
                 # Method 3: Fallback to explicit credentials
                 connection_params = {}
-                if self.server_hostname:
-                    connection_params['server_hostname'] = self.server_hostname
+                
+                # Use DATABRICKS_HOST if available (common in Databricks Apps)
+                host = self.server_hostname or os.getenv("DATABRICKS_HOST")
+                if host:
+                    # Ensure proper format
+                    if not host.startswith('https://'):
+                        host = f"https://{host}"
+                    connection_params['server_hostname'] = host
+                
                 if self.http_path:
                     connection_params['http_path'] = self.http_path
+                elif self.is_databricks_environment:
+                    # Try to auto-detect warehouse again
+                    detected_path = self._detect_sql_warehouse_path()
+                    if detected_path:
+                        connection_params['http_path'] = detected_path
+                
                 if self.token:
                     connection_params['access_token'] = self.token
                     
                 if connection_params:
                     self.sql_connection = sql.connect(**connection_params)
-                    logger.info("✅ Databricks SQL connection established using explicit credentials")
+                    logger.info(f"✅ Databricks SQL connection established using explicit credentials: {list(connection_params.keys())}")
                 else:
                     raise Exception("No valid connection parameters available")
                 

@@ -7,48 +7,58 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 
-# Import our Databricks connection module
-from databricks_connection import get_databricks_manager
-
 # Utility function to get databricks manager safely
 def get_db_manager():
     """Get databricks manager safely"""
-    return get_databricks_manager()
+    try:
+        from databricks_connection import get_databricks_manager
+        return get_databricks_manager()
+    except Exception as e:
+        st.warning(f"Databricks connection unavailable: {e}")
+        return None
 
 def call_agent_bricks_endpoint(application_data):
     """Call your Agent Bricks underwriting system"""
     import os
     
-    # Check if using direct Python integration
-    # Default to direct integration in Databricks environment
-    databricks_indicators = [
-        "DATABRICKS_RUNTIME_VERSION",
-        "DB_CLUSTER_ID", 
-        "SPARK_HOME",
-        "DATABRICKS_TOKEN",
-        "DATABRICKS_HOST",
-        "DATABRICKS_SERVER_HOSTNAME"
-    ]
-    detected_vars = [var for var in databricks_indicators if os.getenv(var)]
-    databricks_env = bool(detected_vars)
+    # Check if using direct Python integration (with error handling)
+    databricks_env = False
+    detected_vars = []
     
-    # Also check if we can detect Databricks Config
-    config_detected = False
-    if not databricks_env:
-        try:
-            from databricks.sdk import Config
-            test_config = Config()
-            config_detected = bool(test_config.host)
-            databricks_env = config_detected
-        except Exception:
-            pass
-    
-    # Debug logging for troubleshooting
-    if databricks_env:
-        debug_info = f"Environment vars: {detected_vars}" if detected_vars else "Config auto-detection"
-        st.sidebar.success(f"🔍 Databricks detected: {debug_info}")
-    else:
-        st.sidebar.info("🔍 Local environment detected")
+    try:
+        # Default to direct integration in Databricks environment
+        databricks_indicators = [
+            "DATABRICKS_RUNTIME_VERSION",
+            "DB_CLUSTER_ID", 
+            "SPARK_HOME",
+            "DATABRICKS_TOKEN",
+            "DATABRICKS_HOST",
+            "DATABRICKS_SERVER_HOSTNAME"
+        ]
+        detected_vars = [var for var in databricks_indicators if os.getenv(var)]
+        databricks_env = bool(detected_vars)
+        
+        # Also check if we can detect Databricks Config
+        if not databricks_env:
+            try:
+                from databricks.sdk import Config
+                test_config = Config()
+                if test_config.host:
+                    databricks_env = True
+                    detected_vars = ["Config auto-detection"]
+            except Exception:
+                pass
+        
+        # Debug logging for troubleshooting
+        if databricks_env:
+            debug_info = f"Environment vars: {detected_vars}" if detected_vars else "Config auto-detection"
+            st.sidebar.success(f"🔍 Databricks detected: {debug_info}")
+        else:
+            st.sidebar.info("🔍 Local environment detected")
+            
+    except Exception as e:
+        st.sidebar.error(f"Environment detection error: {e}")
+        databricks_env = False
     
     default_mode = "true" if databricks_env else "false"
     use_direct = os.getenv("USE_DIRECT_AGENT_BRICKS", default_mode).lower() == "true"
@@ -60,8 +70,8 @@ def call_agent_bricks_endpoint(application_data):
             import agent_bricks_integration
             st.sidebar.warning("🔧 Environment detection failed - forcing direct integration")
             use_direct = True
-        except ImportError:
-            pass
+        except Exception:
+            pass  # Ignore any import errors
     
     if use_direct:
         # Use direct Agent Bricks Python integration
@@ -151,6 +161,11 @@ def initialize_databricks():
     """Initialize Databricks connection and create schema"""
     try:
         databricks_manager = get_db_manager()
+        if not databricks_manager:
+            st.warning("⚠️ Databricks connection unavailable - running in demo mode")
+            st.info("💡 App will work with mock data for testing")
+            return False
+            
         if not databricks_manager.credentials_available:
             if hasattr(databricks_manager, 'is_databricks_environment') and databricks_manager.is_databricks_environment:
                 st.warning("⚠️ Databricks environment detected but connection failed - running in demo mode")
@@ -250,8 +265,12 @@ def main():
                         application_id = None
                         if databricks_connected:
                             try:
-                                application_id = get_db_manager().save_loan_application(application_data, result)
-                                st.success(f"📝 Application saved with ID: `{application_id}`")
+                                db_manager = get_db_manager()
+                                if db_manager:
+                                    application_id = db_manager.save_loan_application(application_data, result)
+                                    st.success(f"📝 Application saved with ID: `{application_id}`")
+                                else:
+                                    st.warning("Database connection unavailable")
                             except Exception as e:
                                 st.warning(f"Could not save to database: {e}")
                         
@@ -313,7 +332,11 @@ def main():
             else:
                 with st.spinner("Looking up application..."):
                     try:
-                        status_data = get_db_manager().get_application_status(application_id)
+                        db_manager = get_db_manager()
+                        if db_manager:
+                            status_data = db_manager.get_application_status(application_id)
+                        else:
+                            status_data = None
                         
                         if status_data:
                             st.success("✅ Application Found!")
@@ -358,13 +381,16 @@ def main():
             try:
                 # Query recent applications
                 db_manager = get_db_manager()
-                recent_query = f"""
-                SELECT application_id, applicant_name, decision, application_timestamp, loan_amount
-                FROM {db_manager.catalog}.{db_manager.schema}.loan_applications
-                ORDER BY application_timestamp DESC
-                LIMIT 10
-                """
-                recent_df = db_manager.execute_query(recent_query)
+                if db_manager:
+                    recent_query = f"""
+                    SELECT application_id, applicant_name, decision, application_timestamp, loan_amount
+                    FROM {db_manager.catalog}.{db_manager.schema}.loan_applications
+                    ORDER BY application_timestamp DESC
+                    LIMIT 10
+                    """
+                    recent_df = db_manager.execute_query(recent_query)
+                else:
+                    recent_df = pd.DataFrame()  # Empty dataframe
                 
                 if not recent_df.empty:
                     st.dataframe(
@@ -391,8 +417,12 @@ def main():
             # Get real analytics data
             try:
                 db_manager = get_db_manager()
-                analytics_data = db_manager.get_analytics_data()
-                trends_data = db_manager.get_application_trends(days=30)
+                if db_manager:
+                    analytics_data = db_manager.get_analytics_data()
+                    trends_data = db_manager.get_application_trends(days=30)
+                else:
+                    analytics_data = {'today_applications': 0, 'approval_rate': 0.0, 'avg_processing_time': 0.0, 'avg_credit_score': 0}
+                    trends_data = pd.DataFrame()
                 
                 # Metrics dashboard
                 col1, col2, col3, col4 = st.columns(4)

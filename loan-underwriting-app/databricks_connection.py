@@ -152,12 +152,20 @@ class DatabricksManager:
                 
                 # Try different connection methods for Databricks Apps
                 if self.is_databricks_environment:
+                    logger.info(f"🔍 DEBUG: Attempting SQL connection in Databricks environment")
+                    logger.info(f"🔍 DEBUG: server_hostname={self.server_hostname}")
+                    logger.info(f"🔍 DEBUG: http_path={self.http_path}")
+                    logger.info(f"🔍 DEBUG: token_available={'Yes' if self.token else 'No'}")
+                    
                     # Method 1: Try native connection with auto-detected warehouse
                     try:
                         if not self.http_path:
+                            logger.info("🔍 DEBUG: No http_path, attempting auto-detection...")
                             self.http_path = self._detect_sql_warehouse_path()
+                            logger.info(f"🔍 DEBUG: Auto-detected http_path={self.http_path}")
                         
                         if self.http_path:
+                            logger.info(f"🔍 DEBUG: Trying sql.connect(http_path='{self.http_path}')")
                             self.sql_connection = sql.connect(http_path=self.http_path)
                             logger.info("✅ Databricks SQL connection established using native auth + detected warehouse")
                             return self.sql_connection
@@ -166,6 +174,7 @@ class DatabricksManager:
                     
                     # Method 2: Try pure native connection
                     try:
+                        logger.info("🔍 DEBUG: Trying sql.connect() with no parameters")
                         self.sql_connection = sql.connect()
                         logger.info("✅ Databricks SQL connection established using pure native authentication")
                         return self.sql_connection
